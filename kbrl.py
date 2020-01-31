@@ -120,6 +120,19 @@ def nn_kernel(S, x, bandwidth):
     weights = weights / np.sum(weights)
     return weights
 
+def test_nn_kernel():
+    """Just a test code for convenience"""
+    S = np.matrix([[1, 1],
+                   [2, 2],
+                   [3, 3],
+                   [4, 4],
+                   [5, 5],
+                   [6, 6]
+                   ])
+    x = np.matrix([2, 2])
+    weight = nn_kernel(S, x, 0.2)
+    print(weight)
+
 def O_action(x, y, bandwidth):
     """ Computes O per action
 
@@ -181,6 +194,11 @@ def create_kbrl_table(R, O, gamma, n_iter):
     return J
 
 def create_OJ(bandwidth, gamma, n_iter, sample_trans, R):
+    """ Create O then the kbrl table(J).
+
+    Returns:
+        O (mxMxm), J (mxM)
+    """
     O = create_O(sample_trans, bandwidth)
     J = create_kbrl_table(R, O, gamma, n_iter)
     return O, J
