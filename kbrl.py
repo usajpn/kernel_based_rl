@@ -204,11 +204,19 @@ def create_OJ(bandwidth, gamma, n_iter, sample_trans, R):
     return O, J
 
 def best_action_kbrl(J, R, sample_trans, gamma, bandwidth, x):
+    """
+    Args:
+        R: m(n_samples)xM(n_actions) reward matrix
+    """
     m, M = J.shape
     kernel_x = np.zeros([m, M])
     for i in range(M):
+        # create a matrix (mxM) which contains the weight between samples and x
+        # for each action.
         kernel_x[:, i] = nn_kernel(sample_trans[:, i, 0, :], x, bandwidth)
+    # weighting x (reward + expected value) (mxM)
     temp = np.multiply(kernel_x, R + gamma * J)
+    # (1xM)
     temp = np.sum(temp, axis=0)
     best_action = np.argmax(temp)
     return best_action
