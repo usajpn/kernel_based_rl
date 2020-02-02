@@ -12,10 +12,14 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import gym
+import pickle
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../PyTorch-RL')))
+
+from utils import *
 
 def get_args():
     p = argparse.ArgumentParser()
-    p.add_argument('--bandwidth', '-b', type=float, default=0.02)
+    p.add_argument('--bandwidth', '-b', type=float, default=0.05)
     p.add_argument('--n_episodes', '-e', type=int, default=1000)
     p.add_argument('--gamma', '-g', type=float, default=0.1)
     p.add_argument('--n_iter', '-i', type=int, default=50)
@@ -24,7 +28,7 @@ def get_args():
 
     return p.parse_args()
 
-def collect_sample_transitions(env, n_samples, render=False):
+def collect_sample_transitions(env, n_samples, render=True, expert_policy=False):
     """This function is a random sample transition per action until it falls.
        It works in the CartPole problem because it earns a reward every time the
        pole stays up on the cart.
@@ -59,6 +63,12 @@ def collect_sample_transitions(env, n_samples, render=False):
 
     # number of episodes the simulator executed
     n_episodes = 0
+    if expert_policy:
+        dtype = torch.float64
+        torch.set_default_dtype(dtype)
+        policy_net, _, running_state = pickle.load(
+            open("assets/CartPole-v0_ppo.p", "rb"))
+        running_state.fix = True
 
     # loop until the action exceeds the number of n_samples
     while cnt_action[0] < n_samples or cnt_action[1] < n_samples:
@@ -66,13 +76,19 @@ def collect_sample_transitions(env, n_samples, render=False):
         obs_x = env.reset()
 
         # number of steps to make sure because it is random
-        max_steps = 100
+        max_steps = 300
         for step in range(max_steps):
             if render:
                 env.render()
 
             # there is no policy so we take a random action
-            action = env.action_space.sample()
+            if expert_policy:
+                state = running_state(obs_x)
+                state_var = tensor(state).unsqueeze(0).to(dtype)
+                action = policy_net.select_action(state_var)[0].cpu().numpy()
+                action = int(action)
+            else:
+                action = env.action_space.sample()
 
             # define obs_y as the end of the transition like in the paper
             obs_y, r, done, _ = env.step(action)
@@ -117,21 +133,42 @@ def nn_kernel(S, x, bandwidth):
     # number of samples
     m, _ = S.shape
     weights = np.exp(np.power(np.linalg.norm(S - x, axis=1) / bandwidth, 2) / (-2))
+#    print("weights:", weights)
+#    print("sum of weights(kernel density):", np.sum(weights))
     weights = weights / np.sum(weights)
     return weights
 
 def test_nn_kernel():
     """Just a test code for convenience"""
-    S = np.matrix([[1, 1],
-                   [2, 2],
-                   [3, 3],
-                   [4, 4],
-                   [5, 5],
-                   [6, 6]
+    S = np.matrix([[1],
+                   [2],
+                   [2],
+                   [2],
+                   [2],
+                   [2],
+                   [3],
+                   [4],
+                   [5],
+                   [6]
                    ])
-    x = np.matrix([2, 2])
+#    S = np.matrix([[1, 1],
+#                   [2, 2],
+#                   [2, 2],
+#                   [3, 3],
+#                   [4, 4],
+#                   [5, 5],
+#                   [6, 6]
+#                   ])
+
+    x = np.matrix([2.2])
     weight = nn_kernel(S, x, 0.2)
-    print(weight)
+    print("2.2", weight)
+    x = np.matrix([4.5])
+    weight = nn_kernel(S, x, 0.2)
+    print("4.5", weight)
+
+#test_nn_kernel()
+#exit(0)
 
 def O_action(x, y, bandwidth):
     """ Computes O per action
@@ -221,6 +258,7 @@ def best_action_kbrl(J, R, sample_trans, gamma, bandwidth, x):
     best_action = np.argmax(temp)
     return best_action
 
+
 def train_kbrl():
     env = gym.make('CartPole-v0')
     args = get_args()
@@ -229,6 +267,7 @@ def train_kbrl():
 
     # 1. sample transitions
     n_samples = args.n_samples
+
     sample_trans, sample_reward = collect_sample_transitions(env, n_samples, args.render)
 
     gamma = args.gamma
